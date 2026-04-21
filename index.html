@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Madrid — Mapa de calor: Precio de habitación × Densidad estudiantil</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;background:#0a0a0f;color:#e8e6e1;overflow-x:hidden}
+#map{width:100%;height:100vh;position:fixed;top:0;left:0;z-index:1}
+.leaflet-control-zoom{border:none!important}
+.leaflet-control-zoom a{background:#1a1a24!important;color:#9a9890!important;border:1px solid rgba(255,255,255,0.08)!important;width:32px!important;height:32px!important;line-height:32px!important;font-size:16px!important}
+.leaflet-control-zoom a:hover{background:#252530!important;color:#fff!important}
+.leaflet-control-attribution{background:rgba(10,10,15,0.85)!important;color:#555!important;font-size:10px!important;border:none!important}
+.leaflet-control-attribution a{color:#666!important}
+
+.panel{position:fixed;top:0;right:0;width:380px;height:100vh;background:rgba(14,14,20,0.92);backdrop-filter:blur(24px);z-index:1000;overflow-y:auto;border-left:1px solid rgba(255,255,255,0.06);padding:28px 24px;transition:transform 0.4s cubic-bezier(0.16,1,0.3,1)}
+.panel.collapsed{transform:translateX(340px)}
+.panel-toggle{position:absolute;left:-40px;top:50%;transform:translateY(-50%);width:40px;height:56px;background:rgba(14,14,20,0.92);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.06);border-right:none;border-radius:8px 0 0 8px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#9a9890;font-size:18px;transition:all 0.2s}
+.panel-toggle:hover{background:rgba(30,30,42,0.95);color:#fff}
+
+.logo{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:#5a5850;margin-bottom:4px;font-weight:600}
+.title{font-size:22px;font-weight:700;line-height:1.25;margin-bottom:6px;background:linear-gradient(135deg,#e8e6e1,#9a9890);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{font-size:12px;color:#6a6860;line-height:1.5;margin-bottom:24px}
+
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px}
+.metric-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px 14px}
+.metric-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#5a5850;margin-bottom:4px}
+.metric-value{font-size:20px;font-weight:700;font-family:'DM Mono',monospace}
+.metric-value.hot{color:#e85d3a}
+.metric-value.cool{color:#3dd9a0}
+.metric-value.neutral{color:#a89afa}
+.metric-value.gold{color:#d4a843}
+
+.control-group{margin-bottom:20px}
+.control-label{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#5a5850;margin-bottom:8px;font-weight:600}
+.control-row{display:flex;gap:4px;flex-wrap:wrap}
+.btn{padding:6px 12px;font-size:12px;font-family:'DM Sans',sans-serif;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#9a9890;border-radius:6px;cursor:pointer;transition:all 0.2s;font-weight:500}
+.btn:hover{background:rgba(255,255,255,0.08);color:#e8e6e1}
+.btn.active{background:rgba(168,154,250,0.12);border-color:rgba(168,154,250,0.3);color:#a89afa}
+
+.legend{margin-bottom:20px}
+.legend-items{display:flex;flex-direction:column;gap:4px}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:#8a8880}
+.legend-swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+
+.barrio-info{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:16px;margin-bottom:16px;display:none}
+.barrio-info.active{display:block}
+.barrio-title{font-size:16px;font-weight:700;margin-bottom:2px}
+.barrio-district{font-size:12px;color:#6a6860;margin-bottom:12px}
+.barrio-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.barrio-stat{font-size:11px;color:#6a6860}
+.barrio-stat span{display:block;font-size:15px;font-weight:600;color:#e8e6e1;font-family:'DM Mono',monospace;margin-top:2px}
+
+.stars{color:#d4a843;letter-spacing:1px}
+.stars-empty{color:#2a2a30}
+
+.footer-note{font-size:10px;color:#3a3830;line-height:1.5;margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.04)}
+
+.custom-tooltip{background:rgba(14,14,20,0.95)!important;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.1)!important;border-radius:8px!important;padding:10px 14px!important;font-family:'DM Sans',sans-serif!important;color:#e8e6e1!important;font-size:13px!important;box-shadow:0 8px 32px rgba(0,0,0,0.5)!important}
+.custom-tooltip .tt-name{font-weight:700;font-size:14px;margin-bottom:2px}
+.custom-tooltip .tt-district{font-size:11px;color:#6a6860;margin-bottom:6px}
+.custom-tooltip .tt-row{display:flex;justify-content:space-between;gap:16px;font-size:12px;padding:2px 0}
+.custom-tooltip .tt-label{color:#6a6860}
+.custom-tooltip .tt-val{font-family:'DM Mono',monospace;font-weight:500}
+.leaflet-tooltip{padding:0!important;border:none!important;background:transparent!important;box-shadow:none!important}
+.leaflet-tooltip::before{display:none!important}
+
+@media(max-width:768px){
+  .panel{width:100%;height:auto;max-height:50vh;top:auto;bottom:0;border-left:none;border-top:1px solid rgba(255,255,255,0.06);border-radius:16px 16px 0 0;padding:20px 16px}
+  .panel.collapsed{transform:translateY(calc(100% - 50px))}
+  .panel-toggle{left:50%;top:-36px;transform:translateX(-50%);width:56px;height:36px;border-radius:8px 8px 0 0;border-bottom:none}
+  .metrics{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="panel" id="panel">
+  <div class="panel-toggle" id="panelToggle">◀</div>
+  
+  <div class="logo">Data Analytics</div>
+  <div class="title">Madrid — Mapa de calor</div>
+  <div class="subtitle">Precio de habitación × densidad estudiantil por barrios. Datos 2025-2026. Fuentes: Idealista, Fotocasa, Bankinter.</div>
+
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="metric-label">Barrios</div>
+      <div class="metric-value neutral" id="m-count">120+</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Más cara</div>
+      <div class="metric-value hot">1.000€</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Más barata</div>
+      <div class="metric-value cool">300€</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Estudiantes</div>
+      <div class="metric-value gold">325K+</div>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <div class="control-label">Visualización</div>
+    <div class="control-row">
+      <button class="btn active" data-mode="combined">Combinado</button>
+      <button class="btn" data-mode="price">Precio</button>
+      <button class="btn" data-mode="students">Estudiantes</button>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <div class="control-label">Filtrar tier</div>
+    <div class="control-row">
+      <button class="btn active" data-tier="all">Todos</button>
+      <button class="btn" data-tier="1">Premium</button>
+      <button class="btn" data-tier="2">Alto</button>
+      <button class="btn" data-tier="3">Medio</button>
+      <button class="btn" data-tier="4">Asequible</button>
+    </div>
+  </div>
+
+  <div class="legend" id="legend-container">
+    <div class="control-label">Leyenda</div>
+    <div class="legend-items" id="legend-items"></div>
+  </div>
+
+  <div class="barrio-info" id="barrio-info">
+    <div class="barrio-title" id="bi-name"></div>
+    <div class="barrio-district" id="bi-district"></div>
+    <div class="barrio-stats">
+      <div class="barrio-stat">Habitación<span id="bi-price"></span></div>
+      <div class="barrio-stat">Promedio<span id="bi-avg"></span></div>
+      <div class="barrio-stat">Estudiantes<span id="bi-stu"></span></div>
+      <div class="barrio-stat">Tier<span id="bi-tier"></span></div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    Haz click en cualquier burbuja para ver el detalle. El tamaño representa la intensidad combinada de precio y presencia estudiantil. Datos recopilados de portales inmobiliarios y fuentes oficiales.
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const districts = [
+  {name:"Centro",tier:1,barrios:[
+    {name:"Chueca-Justicia",lat:40.4230,lng:-3.6970,pMin:650,pMax:900,stu:3,uni:"IE University, escuelas negocio"},
+    {name:"Malasaña-Universidad",lat:40.4260,lng:-3.7050,pMin:600,pMax:800,stu:4,uni:"Res. Yugo Maravillas, Comillas"},
+    {name:"Sol",lat:40.4168,lng:-3.7038,pMin:600,pMax:850,stu:2,uni:"Nudo transporte central"},
+    {name:"Cortes",lat:40.4140,lng:-3.6960,pMin:600,pMax:800,stu:2,uni:"Escuelas de arte"},
+    {name:"Embajadores",lat:40.4080,lng:-3.7020,pMin:450,pMax:650,stu:3,uni:"Barrio multicultural, Erasmus"},
+    {name:"Palacio",lat:40.4150,lng:-3.7140,pMin:500,pMax:700,stu:2,uni:"Conexión Príncipe Pío"}
+  ]},
+  {name:"Chamberí",tier:1,barrios:[
+    {name:"Trafalgar",lat:40.4330,lng:-3.7010,pMin:650,pMax:850,stu:4,uni:"Res. Yugo Claraval, cercanía UCM"},
+    {name:"Almagro",lat:40.4310,lng:-3.6920,pMin:650,pMax:900,stu:3,uni:"Comillas ICADE"},
+    {name:"Arapiles",lat:40.4370,lng:-3.7080,pMin:600,pMax:800,stu:4,uni:"Pegado a Ciudad Universitaria"},
+    {name:"Ríos Rosas",lat:40.4410,lng:-3.6970,pMin:550,pMax:750,stu:3,uni:"UNED sede central"},
+    {name:"Gaztambide",lat:40.4360,lng:-3.7160,pMin:550,pMax:750,stu:5,uni:"Limita con Ciudad Universitaria"},
+    {name:"Vallehermoso",lat:40.4400,lng:-3.7110,pMin:550,pMax:700,stu:4,uni:"Zona de residencias"}
+  ]},
+  {name:"Salamanca",tier:1,barrios:[
+    {name:"Recoletos",lat:40.4240,lng:-3.6880,pMin:700,pMax:1000,stu:2,uni:"IE University campus"},
+    {name:"Castellana",lat:40.4350,lng:-3.6870,pMin:650,pMax:950,stu:2,uni:"Zona corporativa"},
+    {name:"Goya",lat:40.4230,lng:-3.6780,pMin:600,pMax:850,stu:3,uni:"IE, escuelas de máster"},
+    {name:"Lista",lat:40.4300,lng:-3.6770,pMin:600,pMax:850,stu:2,uni:"Zona residencial alta"},
+    {name:"Fuente del Berro",lat:40.4250,lng:-3.6700,pMin:550,pMax:750,stu:2,uni:"Residencial"},
+    {name:"Guindalera",lat:40.4320,lng:-3.6690,pMin:500,pMax:700,stu:3,uni:"Asequible para IE/másters"}
+  ]},
+  {name:"Arganzuela",tier:2,barrios:[
+    {name:"Atocha",lat:40.4060,lng:-3.6920,pMin:550,pMax:750,stu:3,uni:"Nudo cercanías → UAM, UC3M"},
+    {name:"Palos de Moguer",lat:40.4030,lng:-3.6980,pMin:500,pMax:650,stu:2,uni:"Residencial"},
+    {name:"Acacias",lat:40.4010,lng:-3.7070,pMin:480,pMax:650,stu:2,uni:"Madrid Río"},
+    {name:"Imperial",lat:40.4050,lng:-3.7150,pMin:470,pMax:630,stu:2,uni:"—"},
+    {name:"Chopera",lat:40.3980,lng:-3.6950,pMin:450,pMax:620,stu:2,uni:"Matadero, zona cultural"},
+    {name:"Legazpi",lat:40.3920,lng:-3.6940,pMin:450,pMax:600,stu:2,uni:"—"},
+    {name:"Delicias",lat:40.3990,lng:-3.6900,pMin:430,pMax:580,stu:3,uni:"Opción barata cerca Atocha"}
+  ]},
+  {name:"Chamartín",tier:2,barrios:[
+    {name:"El Viso",lat:40.4450,lng:-3.6850,pMin:650,pMax:900,stu:1,uni:"Zona residencial exclusiva"},
+    {name:"Hispanoamérica",lat:40.4530,lng:-3.6790,pMin:600,pMax:800,stu:2,uni:"—"},
+    {name:"Nueva España",lat:40.4600,lng:-3.6860,pMin:550,pMax:700,stu:2,uni:"Nuevos Ministerios cercanías"},
+    {name:"Prosperidad",lat:40.4420,lng:-3.6720,pMin:480,pMax:650,stu:3,uni:"Barrio asequible estudiantes"},
+    {name:"Ciudad Jardín",lat:40.4480,lng:-3.6720,pMin:500,pMax:650,stu:3,uni:"Cercanía escuelas negocio"}
+  ]},
+  {name:"Moncloa-Aravaca",tier:2,barrios:[
+    {name:"Argüelles",lat:40.4280,lng:-3.7170,pMin:550,pMax:750,stu:5,uni:"UCM, UPM, UNED, +30 colegios mayores"},
+    {name:"Ciudad Universitaria",lat:40.4430,lng:-3.7270,pMin:450,pMax:650,stu:5,uni:"~90.000 alumnos UCM+UPM+UNED"},
+    {name:"Valdemarín",lat:40.4530,lng:-3.7570,pMin:500,pMax:700,stu:1,uni:"Zona residencial alta"},
+    {name:"Aravaca",lat:40.4450,lng:-3.7650,pMin:450,pMax:600,stu:2,uni:"Cercanía campus privados"},
+    {name:"Casa de Campo",lat:40.4200,lng:-3.7400,pMin:430,pMax:600,stu:2,uni:"Conexión Príncipe Pío"},
+    {name:"El Plantío",lat:40.4380,lng:-3.7750,pMin:400,pMax:550,stu:1,uni:"Zona residencial"}
+  ]},
+  {name:"Retiro",tier:2,barrios:[
+    {name:"Niño Jesús",lat:40.4130,lng:-3.6820,pMin:600,pMax:800,stu:2,uni:"Zona familiar"},
+    {name:"Ibiza",lat:40.4200,lng:-3.6810,pMin:550,pMax:750,stu:2,uni:"—"},
+    {name:"Pacífico",lat:40.4080,lng:-3.6740,pMin:500,pMax:700,stu:3,uni:"Atocha → UC3M, UAM cercanías"},
+    {name:"Estrella",lat:40.4100,lng:-3.6680,pMin:480,pMax:650,stu:2,uni:"—"},
+    {name:"Adelfas",lat:40.4040,lng:-3.6730,pMin:450,pMax:600,stu:3,uni:"Más asequible, buena conexión"}
+  ]},
+  {name:"Tetuán",tier:2,barrios:[
+    {name:"Cuatro Caminos",lat:40.4480,lng:-3.7040,pMin:500,pMax:700,stu:4,uni:"Nudo L1/L2/L6, alternativa Chamberí"},
+    {name:"Cuzco",lat:40.4580,lng:-3.6910,pMin:520,pMax:700,stu:2,uni:"Zona empresarial"},
+    {name:"Bellas Vistas",lat:40.4450,lng:-3.7100,pMin:480,pMax:650,stu:3,uni:"Alternativa a Moncloa"},
+    {name:"Berruguete",lat:40.4510,lng:-3.7050,pMin:450,pMax:600,stu:3,uni:"Pisos compartidos estudiantes"},
+    {name:"Almenara",lat:40.4620,lng:-3.7000,pMin:430,pMax:580,stu:3,uni:"Opción económica"},
+    {name:"Valdeacederas",lat:40.4570,lng:-3.7060,pMin:420,pMax:570,stu:3,uni:"Buena conexión metro"},
+    {name:"Ventilla",lat:40.4680,lng:-3.6950,pMin:400,pMax:550,stu:2,uni:"—"}
+  ]},
+  {name:"Carabanchel",tier:3,barrios:[
+    {name:"Vista Alegre",lat:40.3920,lng:-3.7370,pMin:400,pMax:550,stu:2,uni:"—"},
+    {name:"Puerta Bonita",lat:40.3880,lng:-3.7300,pMin:380,pMax:520,stu:2,uni:"—"},
+    {name:"Comillas",lat:40.3960,lng:-3.7280,pMin:370,pMax:500,stu:2,uni:"—"},
+    {name:"Opañel",lat:40.3990,lng:-3.7320,pMin:370,pMax:500,stu:2,uni:"—"},
+    {name:"Abrantes",lat:40.3840,lng:-3.7350,pMin:340,pMax:470,stu:1,uni:"—"}
+  ]},
+  {name:"Ciudad Lineal",tier:3,barrios:[
+    {name:"Ventas",lat:40.4310,lng:-3.6610,pMin:420,pMax:580,stu:2,uni:"—"},
+    {name:"Quintana",lat:40.4350,lng:-3.6530,pMin:400,pMax:550,stu:2,uni:"—"},
+    {name:"Pueblo Nuevo",lat:40.4400,lng:-3.6510,pMin:380,pMax:530,stu:2,uni:"—"},
+    {name:"Concepción",lat:40.4380,lng:-3.6580,pMin:370,pMax:510,stu:2,uni:"—"}
+  ]},
+  {name:"Fuencarral-El Pardo",tier:3,barrios:[
+    {name:"Las Tablas",lat:40.5050,lng:-3.6650,pMin:430,pMax:600,stu:2,uni:"—"},
+    {name:"Montecarmelo",lat:40.5100,lng:-3.6800,pMin:420,pMax:580,stu:2,uni:"—"},
+    {name:"Mirasierra",lat:40.4880,lng:-3.7100,pMin:420,pMax:570,stu:3,uni:"CM Santillana, conexión UAM"},
+    {name:"El Pilar",lat:40.4780,lng:-3.7050,pMin:400,pMax:550,stu:2,uni:"—"},
+    {name:"Peñagrande",lat:40.4730,lng:-3.7200,pMin:380,pMax:520,stu:2,uni:"—"}
+  ]},
+  {name:"Hortaleza",tier:3,barrios:[
+    {name:"Sanchinarro",lat:40.4980,lng:-3.6420,pMin:450,pMax:620,stu:2,uni:"—"},
+    {name:"Pinar del Rey",lat:40.4750,lng:-3.6560,pMin:400,pMax:550,stu:2,uni:"—"},
+    {name:"Canillas",lat:40.4680,lng:-3.6480,pMin:380,pMax:530,stu:2,uni:"—"},
+    {name:"Valdefuentes",lat:40.5050,lng:-3.6350,pMin:400,pMax:550,stu:2,uni:"—"}
+  ]},
+  {name:"Latina",tier:3,barrios:[
+    {name:"Puerta del Ángel",lat:40.4070,lng:-3.7290,pMin:400,pMax:550,stu:2,uni:"Cercanía Príncipe Pío"},
+    {name:"Campamento",lat:40.3920,lng:-3.7590,pMin:390,pMax:530,stu:2,uni:"—"},
+    {name:"Lucero",lat:40.3950,lng:-3.7450,pMin:370,pMax:500,stu:1,uni:"—"},
+    {name:"Aluche",lat:40.3880,lng:-3.7530,pMin:350,pMax:480,stu:2,uni:"Opción económica popular"},
+    {name:"Águilas",lat:40.3840,lng:-3.7600,pMin:340,pMax:470,stu:1,uni:"—"}
+  ]},
+  {name:"Puente de Vallecas",tier:3,barrios:[
+    {name:"Numancia",lat:40.3980,lng:-3.6680,pMin:400,pMax:540,stu:2,uni:"UPM Campus Sur cercano"},
+    {name:"San Diego",lat:40.3930,lng:-3.6720,pMin:380,pMax:520,stu:2,uni:"—"},
+    {name:"Palomeras Bajas",lat:40.3870,lng:-3.6600,pMin:360,pMax:490,stu:1,uni:"—"},
+    {name:"Entrevías",lat:40.3850,lng:-3.6700,pMin:320,pMax:440,stu:1,uni:"—"}
+  ]},
+  {name:"Usera",tier:3,barrios:[
+    {name:"Almendrales",lat:40.3880,lng:-3.7050,pMin:400,pMax:540,stu:2,uni:"—"},
+    {name:"Moscardó",lat:40.3910,lng:-3.7100,pMin:390,pMax:530,stu:2,uni:"—"},
+    {name:"Pradolongo",lat:40.3830,lng:-3.7000,pMin:360,pMax:490,stu:1,uni:"—"},
+    {name:"Orcasitas",lat:40.3710,lng:-3.7020,pMin:340,pMax:470,stu:1,uni:"—"}
+  ]},
+  {name:"Moratalaz",tier:4,barrios:[
+    {name:"Pavones",lat:40.4050,lng:-3.6450,pMin:330,pMax:460,stu:1,uni:"—"},
+    {name:"Vinateros",lat:40.4090,lng:-3.6500,pMin:350,pMax:480,stu:1,uni:"—"},
+    {name:"Marroquina",lat:40.4020,lng:-3.6530,pMin:320,pMax:440,stu:1,uni:"—"}
+  ]},
+  {name:"San Blas-Canillejas",tier:4,barrios:[
+    {name:"Canillejas",lat:40.4420,lng:-3.6170,pMin:380,pMax:510,stu:1,uni:"—"},
+    {name:"Simancas",lat:40.4350,lng:-3.6260,pMin:360,pMax:490,stu:1,uni:"—"},
+    {name:"Rosas",lat:40.4380,lng:-3.6330,pMin:320,pMax:440,stu:1,uni:"—"}
+  ]},
+  {name:"Vicálvaro",tier:4,barrios:[
+    {name:"Casco Histórico Vicálvaro",lat:40.4050,lng:-3.6100,pMin:340,pMax:460,stu:1,uni:"—"},
+    {name:"El Cañaveral",lat:40.4110,lng:-3.5900,pMin:360,pMax:490,stu:1,uni:"—"}
+  ]},
+  {name:"Villa de Vallecas",tier:4,barrios:[
+    {name:"Ensanche de Vallecas",lat:40.3800,lng:-3.6250,pMin:360,pMax:490,stu:1,uni:"—"},
+    {name:"Santa Eugenia",lat:40.3850,lng:-3.6100,pMin:330,pMax:450,stu:1,uni:"—"}
+  ]},
+  {name:"Villaverde",tier:4,barrios:[
+    {name:"Los Ángeles",lat:40.3700,lng:-3.6900,pMin:350,pMax:470,stu:1,uni:"—"},
+    {name:"San Cristóbal",lat:40.3600,lng:-3.6950,pMin:310,pMax:420,stu:1,uni:"—"},
+    {name:"Los Rosales",lat:40.3550,lng:-3.7050,pMin:300,pMax:410,stu:1,uni:"—"}
+  ]},
+  {name:"Barajas",tier:4,barrios:[
+    {name:"Alameda de Osuna",lat:40.4530,lng:-3.5900,pMin:380,pMax:520,stu:1,uni:"—"},
+    {name:"Timón",lat:40.4620,lng:-3.5800,pMin:330,pMax:450,stu:1,uni:"—"}
+  ]}
+];
+
+const tierNames = {1:'Premium',2:'Alto',3:'Medio',4:'Asequible'};
+const tierColors = {1:'#e85d3a',2:'#d4a843',3:'#a89afa',4:'#3dd9a0'};
+
+let currentMode = 'combined';
+let currentTier = 'all';
+let markers = [];
+
+const map = L.map('map',{
+  center:[40.4168,-3.7038],
+  zoom:13,
+  zoomControl:true,
+  attributionControl:true
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+  subdomains:'abcd',
+  maxZoom:19
+}).addTo(map);
+
+function getAvg(b){return Math.round((b.pMin+b.pMax)/2)}
+
+function getColor(b,mode){
+  const avg=getAvg(b);
+  if(mode==='price'){
+    if(avg>=700) return '#c0392b';
+    if(avg>=600) return '#e74c3c';
+    if(avg>=500) return '#e67e22';
+    if(avg>=420) return '#f1c40f';
+    if(avg>=350) return '#2ecc71';
+    return '#27ae60';
+  }
+  if(mode==='students'){
+    if(b.stu>=5) return '#8e44ad';
+    if(b.stu>=4) return '#9b59b6';
+    if(b.stu>=3) return '#a89afa';
+    if(b.stu>=2) return '#5b4a9e';
+    return '#2c2140';
+  }
+  const score=(avg/1000)*0.5+(b.stu/5)*0.5;
+  if(score>=0.7) return '#c0392b';
+  if(score>=0.6) return '#e85d3a';
+  if(score>=0.5) return '#e67e22';
+  if(score>=0.4) return '#d4a843';
+  if(score>=0.3) return '#a89afa';
+  return '#3dd9a0';
+}
+
+function getRadius(b,mode){
+  if(mode==='students') return 5+b.stu*5;
+  if(mode==='price'){
+    const avg=getAvg(b);
+    return Math.max(6,Math.min(28,avg/28));
+  }
+  const avg=getAvg(b);
+  const score=(avg/1000)*0.5+(b.stu/5)*0.5;
+  return 8+score*30;
+}
+
+function getOpacity(b,mode){
+  if(mode==='students') return 0.4+b.stu*0.12;
+  const avg=getAvg(b);
+  return Math.min(0.85,0.35+avg/1200);
+}
+
+function starsHTML(n){
+  return '<span style="color:#d4a843">'+'★'.repeat(n)+'</span><span style="color:#333">'+'☆'.repeat(5-n)+'</span>';
+}
+
+function renderMarkers(){
+  markers.forEach(m=>map.removeLayer(m));
+  markers=[];
+
+  districts.forEach(d=>{
+    if(currentTier!=='all' && String(d.tier)!==currentTier) return;
+    d.barrios.forEach(b=>{
+      const color=getColor(b,currentMode);
+      const radius=getRadius(b,currentMode);
+      const opacity=getOpacity(b,currentMode);
+      const avg=getAvg(b);
+
+      const circle=L.circleMarker([b.lat,b.lng],{
+        radius:radius,
+        fillColor:color,
+        fillOpacity:opacity,
+        color:'rgba(255,255,255,0.2)',
+        weight:1
+      }).addTo(map);
+
+      const ttContent=`<div class="custom-tooltip">
+        <div class="tt-name">${b.name}</div>
+        <div class="tt-district">${d.name} · Tier ${d.tier} ${tierNames[d.tier]}</div>
+        <div class="tt-row"><span class="tt-label">Habitación</span><span class="tt-val">${b.pMin}–${b.pMax} €</span></div>
+        <div class="tt-row"><span class="tt-label">Promedio</span><span class="tt-val">${avg} €</span></div>
+        <div class="tt-row"><span class="tt-label">Estudiantes</span><span class="tt-val">${starsHTML(b.stu)}</span></div>
+        <div class="tt-row"><span class="tt-label">Universidades</span><span class="tt-val" style="max-width:140px;text-align:right">${b.uni}</span></div>
+      </div>`;
+
+      circle.bindTooltip(ttContent,{sticky:true,direction:'top',offset:[0,-10]});
+
+      circle.on('click',function(){
+        document.getElementById('barrio-info').classList.add('active');
+        document.getElementById('bi-name').textContent=b.name;
+        document.getElementById('bi-district').textContent=d.name+' · Tier '+d.tier+' '+tierNames[d.tier];
+        document.getElementById('bi-price').textContent=b.pMin+'–'+b.pMax+' €/mes';
+        document.getElementById('bi-avg').textContent=avg+' €';
+        document.getElementById('bi-stu').innerHTML=starsHTML(b.stu)+' ('+b.stu+'/5)';
+        document.getElementById('bi-tier').textContent='Tier '+d.tier+' — '+tierNames[d.tier];
+        document.getElementById('bi-tier').style.color=tierColors[d.tier];
+      });
+
+      circle.on('mouseover',function(){
+        this.setStyle({weight:2,color:'rgba(255,255,255,0.6)',fillOpacity:Math.min(1,opacity+0.2)});
+        this.setRadius(radius+3);
+      });
+      circle.on('mouseout',function(){
+        this.setStyle({weight:1,color:'rgba(255,255,255,0.2)',fillOpacity:opacity});
+        this.setRadius(radius);
+      });
+
+      markers.push(circle);
+    });
+  });
+  updateLegend();
+}
+
+function updateLegend(){
+  const el=document.getElementById('legend-items');
+  let html='';
+  if(currentMode==='price'){
+    const items=[
+      {c:'#c0392b',l:'>700€ — Lujo'},
+      {c:'#e74c3c',l:'600-700€ — Premium'},
+      {c:'#e67e22',l:'500-600€ — Alto'},
+      {c:'#f1c40f',l:'420-500€ — Medio-alto'},
+      {c:'#2ecc71',l:'350-420€ — Medio'},
+      {c:'#27ae60',l:'<350€ — Asequible'}
+    ];
+    items.forEach(i=>{html+=`<div class="legend-item"><div class="legend-swatch" style="background:${i.c}"></div>${i.l}</div>`;});
+  } else if(currentMode==='students'){
+    const items=[
+      {c:'#2c2140',l:'★ — Baja presencia'},
+      {c:'#5b4a9e',l:'★★ — Moderada'},
+      {c:'#a89afa',l:'★★★ — Media-alta'},
+      {c:'#9b59b6',l:'★★★★ — Alta densidad'},
+      {c:'#8e44ad',l:'★★★★★ — Epicentro'}
+    ];
+    items.forEach(i=>{html+=`<div class="legend-item"><div class="legend-swatch" style="background:${i.c}"></div>${i.l}</div>`;});
+  } else {
+    const items=[
+      {c:'#3dd9a0',l:'Bajo precio + pocos estudiantes'},
+      {c:'#a89afa',l:'Equilibrio moderado'},
+      {c:'#d4a843',l:'Tensión media'},
+      {c:'#e67e22',l:'Alta tensión'},
+      {c:'#e85d3a',l:'Muy alta tensión'},
+      {c:'#c0392b',l:'Máxima tensión'}
+    ];
+    items.forEach(i=>{html+=`<div class="legend-item"><div class="legend-swatch" style="background:${i.c}"></div>${i.l}</div>`;});
+  }
+  el.innerHTML=html;
+}
+
+document.querySelectorAll('[data-mode]').forEach(btn=>{
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));
+    this.classList.add('active');
+    currentMode=this.dataset.mode;
+    renderMarkers();
+  });
+});
+
+document.querySelectorAll('[data-tier]').forEach(btn=>{
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('[data-tier]').forEach(b=>b.classList.remove('active'));
+    this.classList.add('active');
+    currentTier=this.dataset.tier;
+    renderMarkers();
+  });
+});
+
+const panel=document.getElementById('panel');
+const toggle=document.getElementById('panelToggle');
+toggle.addEventListener('click',function(){
+  panel.classList.toggle('collapsed');
+  toggle.textContent=panel.classList.contains('collapsed')?'▶':'◀';
+});
+
+renderMarkers();
+
+let count=0;
+districts.forEach(d=>count+=d.barrios.length);
+document.getElementById('m-count').textContent=count;
+</script>
+
+</body>
+</html>
