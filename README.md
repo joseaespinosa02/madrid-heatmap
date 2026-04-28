@@ -37,15 +37,6 @@ Mapa interactivo que cruza el precio de habitación en alquiler con la densidad 
 - [CartoDB Dark Matter](https://carto.com/basemaps/) tiles
 - HTML/CSS/JS puro (sin dependencias de build)
 
-## Cómo desplegar
 
-1. Fork este repositorio
-2. Ve a **Settings → Pages**
-3. En "Source" selecciona **Deploy from a branch**
-4. Selecciona la rama `main` y carpeta `/ (root)`
-5. Guarda y espera ~1 minuto
-6. Tu mapa estará en `https://tu-usuario.github.io/madrid-heatmap/`
-
----
 
 *Proyecto de data analytics — Análisis del mercado de alquiler estudiantil en Madrid*
